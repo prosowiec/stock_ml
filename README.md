@@ -1,3 +1,4 @@
+### Work in progress; readme may contain my notes ###
 1. Pobiera historyczne info SPY - symbol, p/e, eps, markercap
 	1.1 Pobiera codzienne info SPY
 2. Analizuje dane historyczne sprzed np 3 lat - model regresji
