@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 from tqdm import tqdm
 from multiprocessing import Pool
+import database
 
 class Symbols:
     def __init__(self, gainers_url : str = 'https://finance.yahoo.com/gainers?offset=0&count=100', 
@@ -37,7 +38,7 @@ class Symbols:
     
 
 class Features:
-    def __init__(self, symbol:str):
+    def __init__(self, symbol:str = ''):
         self.symbol = symbol
         self.current_price = self.week_change = self.half_year_change = self.year_change = ''
         self.soup_summary = ''
@@ -45,7 +46,6 @@ class Features:
         self.soup_financials = ''
         self.headers = {"User-Agent" : 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36'}
         
-            
     def make_many_soups(self):
         now = datetime.utcnow()
         dateto = int(now.timestamp())
@@ -57,6 +57,8 @@ class Features:
         self.soup_financials = pool.apply_async(self.make_soup, (f'https://finance.yahoo.com/quote/{self.symbol}/financials?p={self.symbol}',)).get()
         self.soup_cashflow = pool.apply_async(self.make_soup, (f'https://finance.yahoo.com/quote/{self.symbol}/cash-flow?p={self.symbol}',)).get()
         self.soup_history = pool.apply_async(self.make_soup, (f'https://finance.yahoo.com/quote/{self.symbol}/history?period1={datefrom}&period2={dateto}&interval=1wk&filter=history&frequency=1wk&includeAdjustedClose=true',)).get()
+        pool.close()
+        pool.join()
     
     def make_soup(self, url):
         r = requests.get(url, headers = self.headers, timeout=1000)
@@ -205,7 +207,7 @@ class Features:
     def save_to_csv(self, filename : str = 'test.csv'):
         headers = ['symbol', 'current_price', 'pe_ratio', 'eps_ratio', 'market_cap', 'day_change', 'week_change', 'half_year_change', 
                    'year_change', 'free_cach_flow_change_1y', 'free_cach_flow_change_2y', 'free_cach_flow_change_3y', 
-                   'revenue_flow_change_1y', 'revenue_change_2y', 'revenue_change_3y']
+                   'revenue_change_1y', 'revenue_change_2y', 'revenue_change_3y']
         
         self.make_many_soups()
         pool = ThreadPool()
@@ -228,15 +230,47 @@ class Features:
             'revenue_change_1y' : r1, 
             'revenue_change_2y' : r2, 
             'revenue_change_3y' : r3,
+            'price_after' : 0,
         }
+        pool.close()
+        pool.join()
         df = pd.DataFrame(data=data)
         df.to_csv(filename, index = False, mode='a', header=False)
         
+
+    def get_df_price_after(self, df):
+        now = datetime.utcnow()
+        dateto = int(now.timestamp())
+        dt = timedelta(days=366)
+        datefrom = int((now - dt).timestamp())
+        
+        res_df = pd.DataFrame()
+        for i in df.index:
+            if df['price_after'][i] == 0 or pd.isnull(df.loc[i, 'price_after']):
+                symbol = str(df['symbol'][i])
+                self.soup_history = self.make_soup(f'https://finance.yahoo.com/quote/{symbol}/history?period1={datefrom}&period2={dateto}&interval=1wk&filter=history&frequency=1wk&includeAdjustedClose=true')
+                df.loc[i, 'price_after'] = self.get_cur_price()
+                self.current_price = ''
+                res_df = pd.concat([res_df,data.loc[i]],ignore_index = True, axis=1)
+        
+        res_df = res_df.T
+        return res_df
+
+        
+        
+'''
 s = Symbols()
 symbol_l = s.get_symbols_losers()
 print(symbol_l)
+
 for symbol in tqdm(symbol_l):
     test = Features(symbol)
-    filename = 'test.csv'
+    filename = 'test777.csv'
     test.save_to_csv(filename)
-    
+''' 
+c1 = Features()
+db = database.Stockdata()
+data = db.import_df()
+df = c1.get_df_price_after(data)
+
+db.upload_current_price(df)

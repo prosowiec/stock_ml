@@ -35,6 +35,9 @@ Short term stock preformace
 https://finance.yahoo.com/quote/{SYMbol}/history?period1=1522281600&period2=1680048000&interval=1mo&filter=history&frequency=1mo&includeAdjustedClose=true
 1 week change ,30 days change%, 180 days change , 1 year change
 
-HEADERS
+HEADERS | mongodb datastock db -> reupload with future_price scraped after 1d
 
 'current_price', 'pe_ratio', 'eps_ratio', 'market_cap', 'day_change', 'week_change', 'half_year_change', 'year_change', 'free_cach_flow_change_1y', 'free_cach_flow_change_2y', 'free_cach_flow_change_3y', 'free_cach_flow_change_1y', 'free_cach_flow_change_2y', 'free_cach_flow_change_3y'
+headers = ['symbol', 'current_price', 'pe_ratio', 'eps_ratio', 'market_cap', 'day_change', 'week_change', 'half_year_change', 
+            'year_change', 'free_cach_flow_change_1y', 'free_cach_flow_change_2y', 'free_cach_flow_change_3y', 
+            'revenue_change_1y', 'revenue_change_2y', 'revenue_change_3y', 'price_after']
