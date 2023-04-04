@@ -4,19 +4,32 @@ import regex as re
 from multiprocessing.pool import ThreadPool
 from datetime import datetime, timedelta
 import pandas as pd
-from tqdm import tqdm
 from multiprocessing import Pool
 import database
+from tqdm import tqdm
+import random
+import time
 
 class Symbols:
     def __init__(self, gainers_url : str = 'https://finance.yahoo.com/gainers?offset=0&count=100', 
                  losers_url : str = 'https://finance.yahoo.com/losers?offset=0&count=100'):
         self.gainers_url = gainers_url
         self.losers_url = losers_url
-        self.headers = {"User-Agent" : 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36'}
+        self.headers_list = [
+                        'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36',
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36'
+                        "Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0",
+                        "Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0",
+                        "Mozilla/5.0 (X11; Linux x86_64; rv:95.0) Gecko/20100101 Firefox/95.0",
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Safari/605.1.15',
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:77.0) Gecko/20100101 Firefox/77.0',
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36',
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:77.0) Gecko/20100101 Firefox/77.0',
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36'
+                        ] 
+        self.headers = {'User-Agent' : random.choice(self.headers_list) }
         self.losers_symbols = []
         self.gainers_symbols = []
-        
     
     def get_symbols(self, url) -> list:
         r = requests.get(url, headers = self.headers, timeout=1000)
@@ -36,29 +49,44 @@ class Symbols:
             self.losers_symbols = self.get_symbols(self.losers_url)
         return self.losers_symbols
     
+    def save_all_sybmols(self, filename : str = 'recent_symbols'):
+        all_symbols = self.get_symbols_losers() + self.get_symbols_gainers()
+        data = {'symbols' : all_symbols, 'scraped' : 0}
+        df = pd.DataFrame(data=data)
+        headers = ['symbols', 'scraped']
+        df.to_csv(filename, index = False, mode = 'w', header = headers)
 
 class Features:
-    def __init__(self, symbol:str = ''):
+    def __init__(self, symbol : str = ''):
         self.symbol = symbol
-        self.current_price = self.week_change = self.half_year_change = self.year_change = ''
+        self.current_price, self.week_change, self.half_year_change, self.year_change = '', '', '', ''
         self.soup_summary = ''
         self.soup_history = ''
         self.soup_financials = ''
-        self.headers = {"User-Agent" : 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36'}
+        self.headers_list = [
+                        'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36',
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36'
+                        "Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0",
+                        "Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0",
+                        "Mozilla/5.0 (X11; Linux x86_64; rv:95.0) Gecko/20100101 Firefox/95.0",
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Safari/605.1.15',
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:77.0) Gecko/20100101 Firefox/77.0',
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36',
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:77.0) Gecko/20100101 Firefox/77.0',
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36'
+                        ] 
+        self.headers = {'User-Agent' : random.choice(self.headers_list) }
         
     def make_many_soups(self):
         now = datetime.utcnow()
         dateto = int(now.timestamp())
         dt = timedelta(days=366)
         datefrom = int((now - dt).timestamp())
+        self.soup_summary = self.make_soup(f'https://finance.yahoo.com/quote/{self.symbol}?p={self.symbol}')
+        self.soup_financials = self.make_soup(f'https://finance.yahoo.com/quote/{self.symbol}/financials?p={self.symbol}')
+        self.soup_cashflow = self.make_soup(f'https://finance.yahoo.com/quote/{self.symbol}/cash-flow?p={self.symbol}')
+        self.soup_history = self.make_soup(f'https://finance.yahoo.com/quote/{self.symbol}/history?period1={datefrom}&period2={dateto}&interval=1wk&filter=history&frequency=1wk&includeAdjustedClose=true')
         
-        pool = ThreadPool()
-        self.soup_summary = pool.apply_async(self.make_soup, (f'https://finance.yahoo.com/quote/{self.symbol}?p={self.symbol}',)).get()
-        self.soup_financials = pool.apply_async(self.make_soup, (f'https://finance.yahoo.com/quote/{self.symbol}/financials?p={self.symbol}',)).get()
-        self.soup_cashflow = pool.apply_async(self.make_soup, (f'https://finance.yahoo.com/quote/{self.symbol}/cash-flow?p={self.symbol}',)).get()
-        self.soup_history = pool.apply_async(self.make_soup, (f'https://finance.yahoo.com/quote/{self.symbol}/history?period1={datefrom}&period2={dateto}&interval=1wk&filter=history&frequency=1wk&includeAdjustedClose=true',)).get()
-        pool.close()
-        pool.join()
     
     def make_soup(self, url):
         r = requests.get(url, headers = self.headers, timeout=1000)
@@ -170,6 +198,7 @@ class Features:
                 #split case 
                 if len(price_list) == 2:
                         continue
+                price_list[-3] = price_list[-3].replace(',','')
                 closed_prece_list.append(float(price_list[-3]))
                 
         self.current_price = closed_prece_list[0]
@@ -204,26 +233,33 @@ class Features:
             self.historical_price()
         return self.year_change
     
-    def save_to_csv(self, filename : str = 'test.csv'):
-        headers = ['symbol', 'current_price', 'pe_ratio', 'eps_ratio', 'market_cap', 'day_change', 'week_change', 'half_year_change', 
-                   'year_change', 'free_cach_flow_change_1y', 'free_cach_flow_change_2y', 'free_cach_flow_change_3y', 
-                   'revenue_change_1y', 'revenue_change_2y', 'revenue_change_3y']
-        
+    def save_to_csv(self, filename : str = 'recent.csv'):
+     
         self.make_many_soups()
         pool = ThreadPool()
-        r1, r2, r3 = zip(pool.apply_async(self.get_free_cash_flow_3y, ()).get())
-        fc1, fc2, fc3 = zip(pool.apply_async(self.get_free_cash_flow_3y, ()).get())
+        revenue = pool.apply_async(self.get_free_cash_flow_3y, ())
+        free_flow = pool.apply_async(self.get_free_cash_flow_3y, ())
+        get_cur_price = pool.apply_async(self.get_cur_price, ())
+        get_pe_ratio = pool.apply_async(self.get_pe_ratio, ())
+        get_eps = pool.apply_async(self.get_eps, ())
+        get_market_cap = pool.apply_async(self.get_market_cap, ()) 
+        get_1d_stock_change =  pool.apply_async(self.get_1d_stock_change, ())
+        get_week_change =  pool.apply_async(self.get_week_change, ())
+        get_half_year_change =  pool.apply_async(self.get_half_year_change, ()) 
+        get_year_change = pool.apply_async(self.get_year_change, ())       
+        r1, r2, r3 = zip(revenue.get())
+        fc1, fc2, fc3 = zip(free_flow.get())
         
         data = {
             'symbol' : self.symbol,
-            'current_price' : pool.apply_async(self.get_cur_price, ()).get(),
-            'pe_ratio' : pool.apply_async(self.get_pe_ratio, ()).get(), 
-            'eps_ratio' : pool.apply_async(self.get_eps, ()).get(), 
-            'market_cap' : pool.apply_async(self.get_market_cap, ()).get(), 
-            'day_change' : pool.apply_async(self.get_1d_stock_change, ()).get(), 
-            'week_change' : pool.apply_async(self.get_week_change, ()).get(), 
-            'half_year_change' : pool.apply_async(self.get_half_year_change, ()).get(), 
-            'year_change' : pool.apply_async(self.get_year_change, ()).get(), 
+            'current_price' : get_cur_price.get(),
+            'pe_ratio' : get_pe_ratio.get(), 
+            'eps_ratio' : get_eps.get(), 
+            'market_cap' : get_market_cap.get(), 
+            'day_change' : get_1d_stock_change.get(), 
+            'week_change' : get_week_change.get(), 
+            'half_year_change' : get_half_year_change.get(), 
+            'year_change' : get_year_change.get(), 
             'free_cach_flow_change_1y' : fc1, 
             'free_cach_flow_change_2y' : fc2, 
             'free_cach_flow_change_3y' : fc3, 
@@ -232,6 +268,7 @@ class Features:
             'revenue_change_3y' : r3,
             'price_after' : 0,
         }
+        
         pool.close()
         pool.join()
         df = pd.DataFrame(data=data)
@@ -251,26 +288,8 @@ class Features:
                 self.soup_history = self.make_soup(f'https://finance.yahoo.com/quote/{symbol}/history?period1={datefrom}&period2={dateto}&interval=1wk&filter=history&frequency=1wk&includeAdjustedClose=true')
                 df.loc[i, 'price_after'] = self.get_cur_price()
                 self.current_price = ''
-                res_df = pd.concat([res_df,data.loc[i]],ignore_index = True, axis=1)
+                res_df = pd.concat([res_df,df.loc[i]],ignore_index = True, axis=1)
+                time.sleep(random.randint(2,6))
         
         res_df = res_df.T
         return res_df
-
-        
-        
-'''
-s = Symbols()
-symbol_l = s.get_symbols_losers()
-print(symbol_l)
-
-for symbol in tqdm(symbol_l):
-    test = Features(symbol)
-    filename = 'test777.csv'
-    test.save_to_csv(filename)
-''' 
-c1 = Features()
-db = database.Stockdata()
-data = db.import_df()
-df = c1.get_df_price_after(data)
-
-db.upload_current_price(df)
