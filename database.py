@@ -4,8 +4,8 @@ import os
 
 class Stockdata:
     def __init__(self):
-        self.client =  MongoClient(<STRING>)
-        self.db = self.client[<STRING>]
+        self.client =  MongoClient(...)
+        self.db = self.client[...]
         self.collection = self.db['stonks']
         self.df = ''
         

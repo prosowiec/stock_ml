@@ -4,11 +4,9 @@ import regex as re
 from multiprocessing.pool import ThreadPool
 from datetime import datetime, timedelta
 import pandas as pd
-from multiprocessing import Pool
-import database
-from tqdm import tqdm
 import random
 import time
+from tqdm import tqdm
 
 class Symbols:
     def __init__(self, gainers_url : str = 'https://finance.yahoo.com/gainers?offset=0&count=100', 
@@ -282,11 +280,14 @@ class Features:
         datefrom = int((now - dt).timestamp())
         
         res_df = pd.DataFrame()
-        for i in df.index:
+        for i in tqdm(df.index):
             if df['price_after'][i] == 0 or pd.isnull(df.loc[i, 'price_after']):
                 symbol = str(df['symbol'][i])
                 self.soup_history = self.make_soup(f'https://finance.yahoo.com/quote/{symbol}/history?period1={datefrom}&period2={dateto}&interval=1wk&filter=history&frequency=1wk&includeAdjustedClose=true')
-                df.loc[i, 'price_after'] = self.get_cur_price()
+                try:
+                    df.loc[i, 'price_after'] = self.get_cur_price()
+                except:
+                    continue
                 self.current_price = ''
                 res_df = pd.concat([res_df,df.loc[i]],ignore_index = True, axis=1)
                 time.sleep(random.randint(2,6))

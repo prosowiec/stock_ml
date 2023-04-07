@@ -1,8 +1,6 @@
-import streamlit as st
 from tqdm import tqdm
 import pandas as pd
 import scraper
-import database
 import time
 import random
 
@@ -19,7 +17,7 @@ def start_scraping(symbols_filename : str = 'recent_symbols.csv'):
             try:
                 scrape_param(str(symbols_df['symbols'][i]))
                 symbols_df.loc[i, 'scraped'] = 1  
-                time.sleep(random.randint(10, 20))
+                time.sleep(random.randint(7, 15))
             except:
                 continue
         symbols_df.to_csv(symbols_filename, index = False, mode = 'w', header = headers)

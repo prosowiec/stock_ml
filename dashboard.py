@@ -11,6 +11,7 @@ option = st.sidebar.selectbox("Select operation", ('Scrape gainers and lossers',
 st.header(option)
 db = database.Stockdata()
 
+
 if option == 'Scrape gainers and lossers':
     col1, col2 = st.columns(2)
     with col1:
@@ -26,14 +27,18 @@ if option == 'Scrape gainers and lossers':
                 symbols_filename = 'recent_symbols.csv'
                 s.save_all_sybmols(symbols_filename)
                 main.start_scraping(symbols_filename)   
+                db.upload_df()    
+
             st.balloons()
 
 if option == 'Scrape ONLY price from prev scrapes':
-    if st.button('Start scraping') and agree: 
-        c1 = scraper.Features()
-        data = db.import_df_0_price()
-        df = c1.get_df_price_after(data)
-        db.upload_current_price(df)    
+    st.write('Click button to continue')
+    if st.button('Start scraping'): 
+        with st.spinner('Please wait ~~ aprox. 1h'):
+            c1 = scraper.Features()
+            data = db.import_df_0_price()
+            df = c1.get_df_price_after(data)
+            db.upload_current_price(df)    
     
 if option == 'Contiue scraping from recent symbol file':
     st.write('Process has began')
@@ -42,10 +47,12 @@ if option == 'Contiue scraping from recent symbol file':
         symbols_filename = 'recent_symbols.csv'
         s.save_all_sybmols(symbols_filename)
         main.start_scraping(symbols_filename)   
+        db.upload_df()    
+
     st.balloons()
     
 if option == 'Show / erase current data':
-    if st.button('Upload recent df') and agree: 
+    if st.button('Upload recent df'): 
         db.upload_df()
         
     df = db.import_df_whole()
