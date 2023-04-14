@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import random
 import time
-from tqdm import tqdm
+from stqdm import stqdm
 
 class Symbols:
     def __init__(self, gainers_url : str = 'https://finance.yahoo.com/gainers?offset=0&count=100', 
@@ -280,7 +280,7 @@ class Features:
         datefrom = int((now - dt).timestamp())
         
         res_df = pd.DataFrame()
-        for i in tqdm(df.index):
+        for i in stqdm(df.index):
             if df['price_after'][i] == 0 or pd.isnull(df.loc[i, 'price_after']):
                 symbol = str(df['symbol'][i])
                 self.soup_history = self.make_soup(f'https://finance.yahoo.com/quote/{symbol}/history?period1={datefrom}&period2={dateto}&interval=1wk&filter=history&frequency=1wk&includeAdjustedClose=true')

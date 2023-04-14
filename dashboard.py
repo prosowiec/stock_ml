@@ -6,7 +6,7 @@ import main
 
 
 option = st.sidebar.selectbox("Select operation", ('Scrape gainers and lossers', 'Contiue scraping from recent symbol file', 
-                                                   'Scrape ONLY price from prev scrapes', 'Show / erase current data'), 0)
+                                                   'Scrape ONLY price from prev scrapes', 'Show / upload data'), 0)
 
 st.header(option)
 db = database.Stockdata()
@@ -22,19 +22,18 @@ if option == 'Scrape gainers and lossers':
     if st.button('Start scraping') and agree: 
             os.remove("recent.csv")
             st.write('Process has began')
-            with st.spinner('Please wait ~~ aprox. 1h'):
-                s = scraper.Symbols()
-                symbols_filename = 'recent_symbols.csv'
-                s.save_all_sybmols(symbols_filename)
-                main.start_scraping(symbols_filename)   
-                db.upload_df()    
+            s = scraper.Symbols()
+            symbols_filename = 'recent_symbols.csv'
+            s.save_all_sybmols(symbols_filename)
+            main.start_scraping(symbols_filename, min_sleep = 10, max_sleep = 20)   
+            db.upload_df()    
 
             st.balloons()
-
+            
 if option == 'Scrape ONLY price from prev scrapes':
     st.write('Click button to continue')
     if st.button('Start scraping'): 
-        with st.spinner('Please wait ~~ aprox. 1h'):
+        with st.spinner('Please wait ~~ aprox. 15 min'):
             c1 = scraper.Features()
             data = db.import_df_0_price()
             df = c1.get_df_price_after(data)
@@ -46,12 +45,12 @@ if option == 'Contiue scraping from recent symbol file':
         s = scraper.Symbols()
         symbols_filename = 'recent_symbols.csv'
         s.save_all_sybmols(symbols_filename)
-        main.start_scraping(symbols_filename)   
+        main.start_scraping(symbols_filename, min_sleep = 10, max_sleep = 20)   
         db.upload_df()    
 
     st.balloons()
     
-if option == 'Show / erase current data':
+if option == 'Show / upload data':
     if st.button('Upload recent df'): 
         db.upload_df()
         

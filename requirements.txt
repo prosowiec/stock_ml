@@ -3,6 +3,7 @@ requests
 regex
 multiprocessing
 pymongo
-tqdm
 pandas
 streamlit
+stqdm
+tqdm
