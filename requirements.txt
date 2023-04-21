@@ -6,4 +6,6 @@ pymongo
 pandas
 streamlit
 stqdm
-tqdm
+xgboost
+sklearn
+tensorflow
