@@ -4,8 +4,8 @@ import os
 
 class Stockdata:
     def __init__(self):
-        self.client =  MongoClient("mongodb+srv://prosowiec:ATLASSTOCKDATA@stockdata.olon5zx.mongodb.net/?retryWrites=true&w=majority")
-        self.db = self.client['stockdata']
+        self.client =  MongoClient(...)
+        self.db = self.client[...]
         self.collection = self.db['stonks']
         self.df = ''
         
