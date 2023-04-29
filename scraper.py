@@ -47,7 +47,7 @@ class Symbols:
             self.losers_symbols = self.get_symbols(self.losers_url)
         return self.losers_symbols
     
-    def save_all_sybmols(self, filename : str = 'recent_symbols'):
+    def save_all_sybmols(self, filename : str = 'operations/recent_symbols.csv'):
         all_symbols = self.get_symbols_losers() + self.get_symbols_gainers()
         data = {'symbols' : all_symbols, 'scraped' : 0}
         df = pd.DataFrame(data=data)
@@ -192,7 +192,6 @@ class Features:
         for row in price_history:
                 price_symbol = re.compile('(?<=<span>)(.*?)(?=<\/span>)')
                 price_list = re.findall(price_symbol, str(row))
-                
                 #split case 
                 if len(price_list) == 2:
                         continue
@@ -231,7 +230,7 @@ class Features:
             self.historical_price()
         return self.year_change
     
-    def save_to_csv(self, filename : str = 'recent.csv'):
+    def save_to_csv(self, filename : str = 'operations/recent.csv'):
      
         self.make_many_soups()
         pool = ThreadPool()
@@ -283,8 +282,8 @@ class Features:
         for i in stqdm(df.index):
             if df['price_after'][i] == 0 or pd.isnull(df.loc[i, 'price_after']):
                 symbol = str(df['symbol'][i])
-                self.soup_history = self.make_soup(f'https://finance.yahoo.com/quote/{symbol}/history?period1={datefrom}&period2={dateto}&interval=1wk&filter=history&frequency=1wk&includeAdjustedClose=true')
                 try:
+                    self.soup_history = self.make_soup(f'https://finance.yahoo.com/quote/{symbol}/history?period1={datefrom}&period2={dateto}&interval=1wk&filter=history&frequency=1wk&includeAdjustedClose=true')
                     df.loc[i, 'price_after'] = self.get_cur_price()
                 except:
                     continue

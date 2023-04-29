@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import xgboost as xgb
+import plotly.express as px
 
 import os
 import scraper
@@ -25,10 +26,10 @@ if option == 'Scrape gainers and lossers':
         agree = st.checkbox('I agree')
         
     if st.button('Start scraping') and agree: 
-            os.remove("recent.csv")
+            os.remove("operations/recent.csv")
             st.write('Process has began')
             s = scraper.Symbols()
-            symbols_filename = 'recent_symbols.csv'
+            symbols_filename = 'operations/recent_symbols.csv'
             s.save_all_sybmols(symbols_filename)
             main.start_scraping(symbols_filename, min_sleep = 10, max_sleep = 20)   
             db.upload_df()    
@@ -48,12 +49,13 @@ if option == 'Contiue scraping from recent symbol file':
     st.write('Process has began')
     with st.spinner('Please wait ~~ aprox. 1h'):
         s = scraper.Symbols()
-        symbols_filename = 'recent_symbols.csv'
+        symbols_filename = 'operations/recent_symbols.csv'
         s.save_all_sybmols(symbols_filename)
         main.start_scraping(symbols_filename, min_sleep = 10, max_sleep = 20)   
         db.upload_df()    
 
     st.balloons()
+    
     
 if option == 'Show / upload data':
     if st.button('Upload recent df'): 
@@ -62,9 +64,14 @@ if option == 'Show / upload data':
     df = db.import_df_whole()
     st.dataframe(df)
 
+
 if option == 'Train ML prediction models':
     col1, col2 = st.columns(2)
     df = db.import_df_whole()
+    headers = ['symbol', 'current_price', 'pe_ratio', 'eps_ratio', 'market_cap', 'day_change', 'week_change', 'half_year_change', 
+            'year_change', 'free_cach_flow_change_1y', 'free_cach_flow_change_2y', 'free_cach_flow_change_3y', 
+            'revenue_change_1y', 'revenue_change_2y', 'revenue_change_3y', 'price_after']
+    
     if st.button('Start training models'):
         with col1:
             st.write('XGBOOST MODEL')
@@ -76,7 +83,13 @@ if option == 'Train ML prediction models':
             st.write(f'{round(xg_mape, 2)} MAPE')
             st.write(f'{round(xg_auc, 2)} AUC')
             st.area_chart(chart_data)
-        
+            fi = pd.DataFrame(data=xg_reg.feature_importances_[1:],
+            index = xg_reg.feature_names_in_[1:], columns=['importance'])
+            
+            st.write('Feature Importance')
+            fig = px.bar(fi.sort_values('importance'), orientation='h')
+            st.plotly_chart(fig)
+
         with col2:
             st.write('TENSORFLOW MODEL')
             with st.spinner('Wait for training to finish'):
@@ -94,7 +107,14 @@ if option == 'Train ML prediction models':
             st.write('History chart')
             st.pyplot(fig)
             ten_reg.save('saved_models/dnn_reg')
+        
+        performace_df = pd.DataFrame({'model': ['Tensorflow', 'XGBOOST'], 'MAPE' : [round(ten_mape, 2), round(xg_mape, 2)], 
+                                      'AUC': [round(ten_auc, 2), round(xg_auc, 2)]}, columns=['model', 'MAPE', 'AUC'])
+        performace_df.to_csv('saved_models/performace.csv', index = False, mode='w')
+        
+        #train_ml.eval_combined_df(ten_reg, xg_reg)
 
+        
 if option == 'Predict prices':
     dnn_model = tf.keras.models.load_model(f'saved_models/dnn_reg')
     xgb_reg = xgb.XGBRegressor()
@@ -116,3 +136,7 @@ if option == 'Predict prices':
     
     st.write('Symbols with same movement')
     st.dataframe(train_ml.same_movement(dnn_df, pred_xgb))
+    
+    df = db.import_df_whole()
+
+    #train_ml.eval_combined_df(dnn_model, xgb_reg, df)

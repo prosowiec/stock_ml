@@ -6,8 +6,8 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from sklearn import metrics
 import xgboost as xgb
+from hyperopt import STATUS_OK, Trials, fmin, hp, tpe
 
-import database
 
 def split_data(df):
     train_dataset = df.sample(frac=0.8, random_state=0)
@@ -20,17 +20,20 @@ def split_data(df):
     
     return train_features, test_features, train_labels, test_labels
 
+
 def real_up_dows(row):
     if row['price_after'] >= row['before']:
         return 1
     else:
         return 0
 
+
 def pred_up_dows(row):
     if row['price_after'] >= row['pred']:
         return 1
     else:
         return 0
+
 
 def classify_pred(before, test_labels, test_predictions):
     dataset = pd.DataFrame({'price_after': test_labels, 'pred': test_predictions}, columns=['price_after', 'pred'])
@@ -41,6 +44,7 @@ def classify_pred(before, test_labels, test_predictions):
     dataset.loc[dataset['real_up_dows'] != dataset['pred_up_dows'], 'check_pred'] = 0
     
     return dataset
+
 
 def build_and_compile_model(norm):
     model = keras.Sequential([
@@ -54,17 +58,19 @@ def build_and_compile_model(norm):
                     optimizer=tf.keras.optimizers.Adam(0.001))
     return model
 
+
 def prepare_df(df):
     df = df.loc[df['price_after'] != 0]
     df.pop('_id')
     df.pop('symbol')
-    df.tail()
     #convert row to NaN hen format is not correct
     df = df.apply(lambda x: pd.to_numeric(x, errors='coerce')).dropna()
 
     return df
 
+
 def train_reg_tensorflow(df = ''):
+    tf.random.set_seed(2137)
     df = prepare_df(df)
     train_features, test_features, train_labels, test_labels = split_data(df)
     
@@ -84,7 +90,7 @@ def train_reg_tensorflow(df = ''):
         verbose=0, epochs=200)
 
     test_predictions = dnn_model.predict(test_features).flatten()
-    dataset = classify_pred(test_features[:, 0], test_labels, test_predictions)
+    dataset = classify_pred(test_features[:, 0], test_labels, test_predictions.copy())
     accuracy  = round(dataset['check_pred'].sum() / dataset.shape[0] * 100, 2)
 
     pred = list(dataset['pred_up_dows'])
@@ -101,29 +107,30 @@ def train_reg_xgboost(df = ''):
     df = prepare_df(df)
     train_features, test_features, train_labels, test_labels = split_data(df)
     
-    reg = xgb.XGBRegressor(base_score=0.5, booster='gbtree',    
-                       n_estimators=1000,
-                       early_stopping_rounds=50,
-                       objective='reg:linear',
-                       max_depth=6,
-                       learning_rate=0.01,
-                       )
+    space = xgb_baysian(train_features, train_labels, test_features, test_labels)
+    #space = {'colsample_bytree': 1.5454067387890569, 'early_stopping_rounds': 170.0, 'gamma': 0.3030738510672555, 'learning_rate': 0.063, 'max_depth': 8.0, 'min_child_weight': 2.0, 'n_estimators': 1400.0, 'reg_alpha': 0.0, 'reg_lambda': 0.9607086474969695}
+
+    reg = xgb.XGBRegressor(
+                        n_estimators = int(space['n_estimators']), max_depth = int(space['max_depth']), gamma = space['gamma'],
+                        reg_alpha = int(space['reg_alpha']),min_child_weight=int(space['min_child_weight']),
+                        colsample_bytree=int(space['colsample_bytree']), objective='reg:squarederror', booster='gbtree', eval_metric = "mape",
+                        learning_rate = space['learning_rate'], early_stopping_rounds = int(space['early_stopping_rounds']))
     
     reg.fit(train_features, train_labels,
         eval_set=[(train_features, train_labels), (test_features, test_labels)],
-        eval_metric = 'mape',
         verbose=100)
     
     test_predictions = reg.predict(test_features)
-    dataset = classify_pred(test_features['current_price'], test_labels, test_predictions)
+    dataset = classify_pred(test_features['current_price'], test_labels, test_predictions.copy())
     accuracy  = round(dataset['check_pred'].sum() / dataset.shape[0] * 100, 2)
-
     pred = list(dataset['pred_up_dows'])
     test = list(dataset['real_up_dows'])
+    
     fpr, tpr, _ = metrics.roc_curve(test,  pred)
     auc = metrics.roc_auc_score(test, pred)
     mape = metrics.mean_absolute_percentage_error(test_features['current_price'], test_predictions)
     return accuracy, fpr, tpr, auc, reg, mape
+
 
 def dnn_tensor_predict(model, cur_features):
     symbols = cur_features.pop('symbol')
@@ -132,6 +139,7 @@ def dnn_tensor_predict(model, cur_features):
                       columns=['symbol', 'scraped_price', 'predicted_price_dnn'])
     return df
 
+
 def xgboost_predict(model, cur_features):
     symbols = cur_features.pop('symbol')
     pred_xgb = model.predict(cur_features)
@@ -139,11 +147,13 @@ def xgboost_predict(model, cur_features):
                       columns=['symbol', 'scraped_price', 'predicted_price_xgb'])
     return df
 
+
 def pred_up_dows_prod(row, pred_name):
     if row['scraped_price'] >= row[pred_name]:
         return 1
     else:
         return 0
+
 
 def same_movement(dnn_reg, xgb_reg):
     dnn_reg['up_dows_dnn'] = dnn_reg.apply(lambda row: pred_up_dows_prod(row, 'predicted_price_dnn'), axis=1)
@@ -155,3 +165,59 @@ def same_movement(dnn_reg, xgb_reg):
     
     return df
 
+def eval_combined_df(dnn_model, xgb_model, df):
+    df.pop('_id')
+    print(df.head())
+    train_features, test_features, train_labels, test_labels = split_data(df)
+    
+    test_predictions_tensorflow = dnn_tensor_predict(dnn_model, test_features)
+    test_predictions_xgboost = xgboost_predict(xgb_model, test_features)
+    test_predictions_tensorflow['real_price'] = test_labels
+    test_predictions_xgboost['real_price'] = test_labels
+    eval = same_movement(test_predictions_tensorflow, test_predictions_xgboost)
+    eval.to_csv('eval.csv', index = False, mode = 'w')
+
+
+def xgb_baysian(X_train, y_train, X_test, y_test):
+    space = {'max_depth': hp.quniform("max_depth", 3, 9, 1),
+        'gamma': hp.uniform('gamma', 0, 3),
+        'reg_alpha' : hp.quniform('reg_alpha', 0, 5, 1),
+        'reg_lambda' : hp.uniform('reg_lambda', 0, 2),
+        'colsample_bytree' : hp.uniform('colsample_bytree', 0, 2),
+        'min_child_weight' : hp.quniform('min_child_weight', 0, 5, 1),
+        'n_estimators': hp.quniform("n_estimators", 1000, 1500, 100),
+        'learning_rate': hp.quniform("learning_rate", 0.001, 0.3, 0.001),
+        'seed': 0,
+        'early_stopping_rounds' : hp.quniform("early_stopping_rounds", 50, 200, 10)
+    }
+
+    def objective(space):
+        oreg = xgb.XGBRegressor(
+                        n_estimators = int(space['n_estimators']), max_depth = int(space['max_depth']), gamma = space['gamma'],
+                        reg_alpha = int(space['reg_alpha']),min_child_weight=int(space['min_child_weight']),
+                        colsample_bytree=int(space['colsample_bytree']), objective='reg:squarederror', booster='gbtree', eval_metric = "rmse",
+                        learning_rate = space['learning_rate'], early_stopping_rounds = int(space['early_stopping_rounds']))
+        
+        evaluation = [( X_train, y_train), ( X_test, y_test)]
+        
+        oreg.fit(X_train, y_train,
+                eval_set=evaluation,
+                verbose = False)
+        
+        pred = oreg.predict(X_test)
+        #dataset = classify_pred(X_test['current_price'], y_test, pred.copy())
+        #accuracy  = round(dataset['check_pred'].sum() / dataset.shape[0] * 100, 2)
+
+        accuracy = metrics.mean_absolute_percentage_error(y_test, pred)
+        #accuracy = metrics.mean_squared_error(y_test, pred, squared = False)
+        return {'loss': accuracy, 'status': STATUS_OK }
+    
+    trials = Trials()
+
+    best_hyperparams = fmin(fn = objective,
+                            space = space,
+                            algo = tpe.suggest,
+                            max_evals = 100,
+                            trials = trials)
+    
+    return best_hyperparams

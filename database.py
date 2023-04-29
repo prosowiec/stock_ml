@@ -9,7 +9,7 @@ class Stockdata:
         self.collection = self.db['stonks']
         self.df = ''
         
-    def get_df(self, filename = 'recent.csv'):
+    def get_df(self, filename = 'operations/recent.csv'):
         if self.df:
             return self.df
         
@@ -20,7 +20,7 @@ class Stockdata:
         
         return self.df
     
-    def upload_df(self, filename : str = 'recent.csv'):
+    def upload_df(self, filename : str = 'operations/recent.csv'):
         data = self.get_df(filename)
         data_dict = data.to_dict("records")
         self.collection.insert_many(data_dict)

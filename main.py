@@ -9,7 +9,7 @@ def scrape_param(symbol):
     scrape = scraper.Features(symbol)
     scrape.save_to_csv()
 
-def start_scraping(symbols_filename : str = 'recent_symbols.csv', min_sleep : int = 9, max_sleep : int = 17):
+def start_scraping(symbols_filename : str = 'operations/recent_symbols.csv', min_sleep : int = 9, max_sleep : int = 17):
     s = scraper.Symbols()
     headers = ['symbols', 'scraped']
     symbols_df = pd.read_csv(symbols_filename)
@@ -26,7 +26,7 @@ def start_scraping(symbols_filename : str = 'recent_symbols.csv', min_sleep : in
 
 if __name__ == '__main__':
     s = scraper.Symbols()
-    symbols_filename = 'recent_symbols.csv'
+    symbols_filename = 'operations/recent_symbols.csv'
     s.save_all_sybmols(symbols_filename)
     start_scraping(symbols_filename)
 
