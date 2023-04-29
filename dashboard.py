@@ -72,11 +72,13 @@ if option == 'Train ML prediction models':
             'year_change', 'free_cach_flow_change_1y', 'free_cach_flow_change_2y', 'free_cach_flow_change_3y', 
             'revenue_change_1y', 'revenue_change_2y', 'revenue_change_3y', 'price_after']
     
+    xg_reg, ten_reg = None, None
+    agree = st.checkbox('Perform hypertuning parameters in xgboost')
     if st.button('Start training models'):
         with col1:
             st.write('XGBOOST MODEL')
             with st.spinner('Wait for training to finish'):
-                xg_accuracy, xg_fpr, xg_tpr, xg_auc, xg_reg, xg_mape = train_ml.train_reg_xgboost(df)
+                xg_accuracy, xg_fpr, xg_tpr, xg_auc, xg_reg, xg_mape = train_ml.train_reg_xgboost(df, agree)
             
             chart_data = pd.DataFrame(xg_tpr, xg_fpr)
             xg_reg.save_model("saved_models/xg_reg.json")
@@ -85,7 +87,6 @@ if option == 'Train ML prediction models':
             st.area_chart(chart_data)
             fi = pd.DataFrame(data=xg_reg.feature_importances_[1:],
             index = xg_reg.feature_names_in_[1:], columns=['importance'])
-            
             st.write('Feature Importance')
             fig = px.bar(fi.sort_values('importance'), orientation='h')
             st.plotly_chart(fig)
@@ -108,11 +109,19 @@ if option == 'Train ML prediction models':
             st.pyplot(fig)
             ten_reg.save('saved_models/dnn_reg')
         
-        performace_df = pd.DataFrame({'model': ['Tensorflow', 'XGBOOST'], 'MAPE' : [round(ten_mape, 2), round(xg_mape, 2)], 
-                                      'AUC': [round(ten_auc, 2), round(xg_auc, 2)]}, columns=['model', 'MAPE', 'AUC'])
+        auc_both, both_fpr, both_tpr = train_ml.eval_combined_df(ten_reg, xg_reg, df)
+        st.write(f'Accuraccy of model with same movement - {round(auc_both, 2)}')
+        chart_data_both = pd.DataFrame(both_tpr, both_fpr)
+        st.area_chart(chart_data)
+          
+        performace_df = pd.DataFrame({'model': ['Tensorflow', 'XGBOOST', 'BOTH'], 
+                                      'MAPE' : [round(ten_mape, 2), round(xg_mape, 2), max(round(ten_mape, 2), round(xg_mape, 2))], 
+                                      'AUC': [round(ten_auc, 2), round(xg_auc, 2), round(auc_both, 2)]}, 
+                                     columns=['model', 'MAPE', 'AUC']) 
+        
+        
         performace_df.to_csv('saved_models/performace.csv', index = False, mode='w')
         
-        #train_ml.eval_combined_df(ten_reg, xg_reg)
 
         
 if option == 'Predict prices':
@@ -123,20 +132,25 @@ if option == 'Predict prices':
     data = data.drop('price_after', axis=1)
     data = data.drop('_id', axis=1)
     
+    per_df = pd.read_csv('saved_models/performace.csv')
+    
     col1, col2 = st.columns(2)
     with col1:
         st.write('XGBOOST MODEL')
+        st.write(F'MAPE {per_df.loc[1][1]}')
+        st.write(F'AUC {per_df.loc[1][2]}')
         pred_xgb = train_ml.xgboost_predict(xgb_reg, data.copy())
         st.dataframe(pred_xgb)
 
     with col2:
         st.write('TENSORFLOW MODEL')
+        st.write(F'MAPE {per_df.loc[0][1]}')
+        st.write(F'AUC {per_df.loc[0][2]}')
         dnn_df = train_ml.dnn_tensor_predict(dnn_model, data.copy())
         st.dataframe(dnn_df)
-    
+
     st.write('Symbols with same movement')
+    st.write(F'MAPE(best of models) {per_df.loc[2][1]}')
+    st.write(F'AUC {per_df.loc[2][2]}')
     st.dataframe(train_ml.same_movement(dnn_df, pred_xgb))
     
-    df = db.import_df_whole()
-
-    #train_ml.eval_combined_df(dnn_model, xgb_reg, df)

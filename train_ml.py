@@ -70,7 +70,6 @@ def prepare_df(df):
 
 
 def train_reg_tensorflow(df = ''):
-    tf.random.set_seed(2137)
     df = prepare_df(df)
     train_features, test_features, train_labels, test_labels = split_data(df)
     
@@ -81,13 +80,14 @@ def train_reg_tensorflow(df = ''):
     test_labels = tf.convert_to_tensor(test_labels, dtype=tf.float32)
 
     normalizer.adapt(np.asarray(train_features).astype(np.float32))
-
+    tf.random.set_seed(2137)
+    
     dnn_model = build_and_compile_model(normalizer)
     history = dnn_model.fit(
         train_features,
         train_labels,
         validation_split=0.2,
-        verbose=0, epochs=200)
+        verbose = 0, epochs=200)
 
     test_predictions = dnn_model.predict(test_features).flatten()
     dataset = classify_pred(test_features[:, 0], test_labels, test_predictions.copy())
@@ -102,13 +102,15 @@ def train_reg_tensorflow(df = ''):
     return accuracy, history, fpr, tpr, auc, dnn_model, mape
 
 
-def train_reg_xgboost(df = ''):
+def train_reg_xgboost(df = '', tune = True):
 
     df = prepare_df(df)
     train_features, test_features, train_labels, test_labels = split_data(df)
     
-    space = xgb_baysian(train_features, train_labels, test_features, test_labels)
-    #space = {'colsample_bytree': 1.5454067387890569, 'early_stopping_rounds': 170.0, 'gamma': 0.3030738510672555, 'learning_rate': 0.063, 'max_depth': 8.0, 'min_child_weight': 2.0, 'n_estimators': 1400.0, 'reg_alpha': 0.0, 'reg_lambda': 0.9607086474969695}
+    if tune:
+        space = xgb_baysian(train_features, train_labels, test_features, test_labels)
+    else:
+        space = {'colsample_bytree': 1.5454067387890569, 'early_stopping_rounds': 170.0, 'gamma': 0.3030738510672555, 'learning_rate': 0.063, 'max_depth': 8.0, 'min_child_weight': 2.0, 'n_estimators': 1400.0, 'reg_alpha': 0.0, 'reg_lambda': 0.9607086474969695}
 
     reg = xgb.XGBRegressor(
                         n_estimators = int(space['n_estimators']), max_depth = int(space['max_depth']), gamma = space['gamma'],
@@ -118,7 +120,7 @@ def train_reg_xgboost(df = ''):
     
     reg.fit(train_features, train_labels,
         eval_set=[(train_features, train_labels), (test_features, test_labels)],
-        verbose=100)
+        verbose = 0)
     
     test_predictions = reg.predict(test_features)
     dataset = classify_pred(test_features['current_price'], test_labels, test_predictions.copy())
@@ -134,6 +136,8 @@ def train_reg_xgboost(df = ''):
 
 def dnn_tensor_predict(model, cur_features):
     symbols = cur_features.pop('symbol')
+    cur_features = cur_features.apply(lambda x: pd.to_numeric(x, errors='coerce')).dropna()    
+    
     pred_dnn = model.predict(cur_features).flatten()
     df = pd.DataFrame({'symbol': symbols, 'scraped_price' : cur_features['current_price'],'predicted_price_dnn': pred_dnn}, 
                       columns=['symbol', 'scraped_price', 'predicted_price_dnn'])
@@ -142,6 +146,8 @@ def dnn_tensor_predict(model, cur_features):
 
 def xgboost_predict(model, cur_features):
     symbols = cur_features.pop('symbol')
+    cur_features = cur_features.apply(lambda x: pd.to_numeric(x, errors='coerce')).dropna() 
+       
     pred_xgb = model.predict(cur_features)
     df = pd.DataFrame({'symbol': symbols, 'scraped_price' : cur_features['current_price'], 'predicted_price_xgb': pred_xgb}, 
                       columns=['symbol', 'scraped_price', 'predicted_price_xgb'])
@@ -159,23 +165,28 @@ def same_movement(dnn_reg, xgb_reg):
     dnn_reg['up_dows_dnn'] = dnn_reg.apply(lambda row: pred_up_dows_prod(row, 'predicted_price_dnn'), axis=1)
     xgb_reg['up_dows_xgb'] = xgb_reg.apply(lambda row: pred_up_dows_prod(row, 'predicted_price_xgb'), axis=1)
     xgb_reg = xgb_reg.drop('scraped_price', axis=1)
-    df = pd.concat([dnn_reg.set_index('symbol'), xgb_reg.set_index('symbol')], axis=1)
+    df = pd.concat([dnn_reg.set_index('symbol'), xgb_reg.set_index('symbol')], axis = 1)
     df = df.loc[df['up_dows_xgb'] == df['up_dows_dnn']]
-    df = df.drop(['up_dows_xgb'], axis=1)
+    df = df.drop(['up_dows_dnn'], axis=1)
     
     return df
 
 def eval_combined_df(dnn_model, xgb_model, df):
     df.pop('_id')
-    print(df.head())
     train_features, test_features, train_labels, test_labels = split_data(df)
+    test_predictions_tensorflow = dnn_tensor_predict(dnn_model, test_features.copy())
+    test_predictions_xgboost = xgboost_predict(xgb_model, test_features.copy())
     
-    test_predictions_tensorflow = dnn_tensor_predict(dnn_model, test_features)
-    test_predictions_xgboost = xgboost_predict(xgb_model, test_features)
-    test_predictions_tensorflow['real_price'] = test_labels
     test_predictions_xgboost['real_price'] = test_labels
+    
     eval = same_movement(test_predictions_tensorflow, test_predictions_xgboost)
-    eval.to_csv('eval.csv', index = False, mode = 'w')
+    eval['up_dows_real'] = eval.apply(lambda row: pred_up_dows_prod(row, 'real_price'), axis=1)
+    eval['symbol'] = eval.index
+    
+    auc = metrics.accuracy_score(eval['up_dows_xgb'], eval['up_dows_real'])
+    fpr, tpr, _ = metrics.roc_curve(eval['up_dows_xgb'], eval['up_dows_real'])
+
+    return auc, fpr, tpr
 
 
 def xgb_baysian(X_train, y_train, X_test, y_test):
@@ -187,7 +198,7 @@ def xgb_baysian(X_train, y_train, X_test, y_test):
         'min_child_weight' : hp.quniform('min_child_weight', 0, 5, 1),
         'n_estimators': hp.quniform("n_estimators", 1000, 1500, 100),
         'learning_rate': hp.quniform("learning_rate", 0.001, 0.3, 0.001),
-        'seed': 0,
+        'seed': 2137,
         'early_stopping_rounds' : hp.quniform("early_stopping_rounds", 50, 200, 10)
     }
 
@@ -205,15 +216,11 @@ def xgb_baysian(X_train, y_train, X_test, y_test):
                 verbose = False)
         
         pred = oreg.predict(X_test)
-        #dataset = classify_pred(X_test['current_price'], y_test, pred.copy())
-        #accuracy  = round(dataset['check_pred'].sum() / dataset.shape[0] * 100, 2)
-
+        
         accuracy = metrics.mean_absolute_percentage_error(y_test, pred)
-        #accuracy = metrics.mean_squared_error(y_test, pred, squared = False)
         return {'loss': accuracy, 'status': STATUS_OK }
     
     trials = Trials()
-
     best_hyperparams = fmin(fn = objective,
                             space = space,
                             algo = tpe.suggest,

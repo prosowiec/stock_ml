@@ -9,3 +9,4 @@ stqdm
 xgboost
 sklearn
 tensorflow
+hyperopt
