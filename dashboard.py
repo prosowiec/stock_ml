@@ -13,7 +13,7 @@ import train_ml
 
 option = st.sidebar.selectbox("Select operation", ('Scrape gainers and lossers', 'Contiue scraping from recent symbol file', 
                                                    'Scrape ONLY price from prev scrapes', 'Predict prices', 'Train ML prediction models',
-                                                   'Show / upload data'), 0)
+                                                   'Evaluate models performance', 'Show / upload data'), 0)
 
 db = database.Stockdata()
 st.header(option)
@@ -26,7 +26,10 @@ if option == 'Scrape gainers and lossers':
         agree = st.checkbox('I agree')
         
     if st.button('Start scraping') and agree: 
-            os.remove("operations/recent.csv")
+            try:
+                os.remove("operations/recent.csv")
+            except:
+                pass
             st.write('Process has began')
             s = scraper.Symbols()
             symbols_filename = 'operations/recent_symbols.csv'
@@ -47,10 +50,10 @@ if option == 'Scrape ONLY price from prev scrapes':
     
 if option == 'Contiue scraping from recent symbol file':
     st.write('Process has began')
-    with st.spinner('Please wait ~~ aprox. 1h'):
+    if st.button('Start scraping'):
         s = scraper.Symbols()
         symbols_filename = 'operations/recent_symbols.csv'
-        s.save_all_sybmols(symbols_filename)
+        #s.save_all_sybmols(symbols_filename)
         main.start_scraping(symbols_filename, min_sleep = 10, max_sleep = 20)   
         db.upload_df()    
 
@@ -80,25 +83,28 @@ if option == 'Train ML prediction models':
             with st.spinner('Wait for training to finish'):
                 xg_accuracy, xg_fpr, xg_tpr, xg_auc, xg_reg, xg_mape = train_ml.train_reg_xgboost(df, agree)
             
-            chart_data = pd.DataFrame(xg_tpr, xg_fpr)
-            xg_reg.save_model("saved_models/xg_reg.json")
             st.write(f'{round(xg_mape, 2)} MAPE')
             st.write(f'{round(xg_auc, 2)} AUC')
+            chart_data = pd.DataFrame(xg_tpr, xg_fpr)
             st.area_chart(chart_data)
             fi = pd.DataFrame(data=xg_reg.feature_importances_[1:],
             index = xg_reg.feature_names_in_[1:], columns=['importance'])
             st.write('Feature Importance')
             fig = px.bar(fi.sort_values('importance'), orientation='h')
             st.plotly_chart(fig)
+            
+            xg_reg.save_model("saved_models/xg_reg.json")
 
         with col2:
             st.write('TENSORFLOW MODEL')
             with st.spinner('Wait for training to finish'):
                 ten_accuracy, ten_history, ten_fpr, ten_tpr, ten_auc, ten_reg, ten_mape = train_ml.train_reg_tensorflow(df)
-            chart_data = pd.DataFrame(ten_tpr, ten_fpr)
+            
             st.write(f'{round(ten_mape, 2)} MAPE')
             st.write(f'{round(ten_accuracy, 2)} AUC')
+            chart_data = pd.DataFrame(ten_tpr, ten_fpr)
             st.area_chart(chart_data)
+            
             fig, ax = plt.subplots(figsize=(10,10))
             ax2=ax.twinx()
             line1 = ax.plot(ten_history.history['loss'], label='loss', color = "tab:blue")
@@ -107,6 +113,7 @@ if option == 'Train ML prediction models':
             ax2.legend(loc=1)
             st.write('History chart')
             st.pyplot(fig)
+            
             ten_reg.save('saved_models/dnn_reg')
         
         auc_both, both_fpr, both_tpr = train_ml.eval_combined_df(ten_reg, xg_reg, df)
@@ -115,10 +122,9 @@ if option == 'Train ML prediction models':
         st.area_chart(chart_data)
           
         performace_df = pd.DataFrame({'model': ['Tensorflow', 'XGBOOST', 'BOTH'], 
-                                      'MAPE' : [round(ten_mape, 2), round(xg_mape, 2), max(round(ten_mape, 2), round(xg_mape, 2))], 
+                                      'MAPE' : [round(ten_mape, 2), round(xg_mape, 2), min(round(ten_mape, 2), round(xg_mape, 2))], 
                                       'AUC': [round(ten_auc, 2), round(xg_auc, 2), round(auc_both, 2)]}, 
                                      columns=['model', 'MAPE', 'AUC']) 
-        
         
         performace_df.to_csv('saved_models/performace.csv', index = False, mode='w')
         
@@ -153,4 +159,32 @@ if option == 'Predict prices':
     st.write(F'MAPE(best of models) {per_df.loc[2][1]}')
     st.write(F'AUC {per_df.loc[2][2]}')
     st.dataframe(train_ml.same_movement(dnn_df, pred_xgb))
+    
+if option == 'Evaluate models performance':
+    dnn_model = tf.keras.models.load_model(f'saved_models/dnn_reg')
+    xgb_reg = xgb.XGBRegressor()
+    xgb_reg.load_model("saved_models/xg_reg.json")
+    data = db.import_df_whole()
+    if st.button('Start evaluation'):
+        df = train_ml.eval_models(dnn_model, xgb_reg, data)
+        col1, col2 = st.columns(2)
+        with col1:
+            accuracy, fpr, tpr, auc, mape = df.loc[1, 'accuracy'], df.loc[1, 'fpr'], df.loc[1, 'tpr'], df.loc[1, 'auc'], df.loc[1, 'mape']
+            st.write('XGBOOST MODEL')
+            st.write(f'{round(mape, 2)} MAPE')
+            st.write(f'{round(auc, 2)} AUC')
+            st.write(f'{round(accuracy, 2)} ACCURACY')
+            chart_data = pd.DataFrame(tpr, fpr)
+            st.area_chart(chart_data)
+
+        with col2:
+            accuracy, fpr, tpr, auc, mape = df.loc[0, 'accuracy'], df.loc[0, 'fpr'], df.loc[0, 'tpr'], df.loc[0, 'auc'], df.loc[0, 'mape']
+            st.write('TENSORFLOW MODEL')           
+            st.write(f'{round(mape, 2)} MAPE')
+            st.write(f'{round(accuracy, 2)} AUC')
+            st.write(f'{round(accuracy, 2)} ACCURACY')
+            chart_data = pd.DataFrame(tpr, fpr)
+            st.area_chart(chart_data)
+        
+        st.write(df)    
     

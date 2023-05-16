@@ -282,13 +282,17 @@ class Features:
         for i in stqdm(df.index):
             if df['price_after'][i] == 0 or pd.isnull(df.loc[i, 'price_after']):
                 symbol = str(df['symbol'][i])
+                
                 try:
-                    self.soup_history = self.make_soup(f'https://finance.yahoo.com/quote/{symbol}/history?period1={datefrom}&period2={dateto}&interval=1wk&filter=history&frequency=1wk&includeAdjustedClose=true')
+                    self.soup_history = self.make_soup(f'https://finance.yahoo.com/quote/{symbol}/history?period1={datefrom}\
+                                                       &period2={dateto}&interval=1wk&filter=history&frequency=1wk&includeAdjustedClose=true')
+                    
                     df.loc[i, 'price_after'] = self.get_cur_price()
                 except:
                     continue
+                
                 self.current_price = ''
-                res_df = pd.concat([res_df,df.loc[i]],ignore_index = True, axis=1)
+                res_df = pd.concat([res_df, df.loc[i]], ignore_index = True, axis=1)
                 time.sleep(random.randint(2,6))
         
         res_df = res_df.T

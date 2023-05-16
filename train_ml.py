@@ -110,7 +110,8 @@ def train_reg_xgboost(df = '', tune = True):
     if tune:
         space = xgb_baysian(train_features, train_labels, test_features, test_labels)
     else:
-        space = {'colsample_bytree': 1.5454067387890569, 'early_stopping_rounds': 170.0, 'gamma': 0.3030738510672555, 'learning_rate': 0.063, 'max_depth': 8.0, 'min_child_weight': 2.0, 'n_estimators': 1400.0, 'reg_alpha': 0.0, 'reg_lambda': 0.9607086474969695}
+        space = {'colsample_bytree': 1.5454067387890569, 'early_stopping_rounds': 170.0, 'gamma': 0.3030738510672555, 'learning_rate': 0.063, 
+                 'max_depth': 8.0, 'min_child_weight': 2.0, 'n_estimators': 1400.0, 'reg_alpha': 0.0, 'reg_lambda': 0.9607086474969695}
 
     reg = xgb.XGBRegressor(
                         n_estimators = int(space['n_estimators']), max_depth = int(space['max_depth']), gamma = space['gamma'],
@@ -228,3 +229,37 @@ def xgb_baysian(X_train, y_train, X_test, y_test):
                             trials = trials)
     
     return best_hyperparams
+
+
+def get_metrics(test_features, test_labels, test_predictions):
+    dataset = classify_pred(test_features, test_labels, test_predictions.copy())
+    accuracy  = round(dataset['check_pred'].sum() / dataset.shape[0] * 100, 2)
+    pred = list(dataset['pred_up_dows'])
+    test = list(dataset['real_up_dows'])
+    
+    fpr, tpr, _ = metrics.roc_curve(test,  pred)
+    auc = metrics.roc_auc_score(test, pred)
+    mape = metrics.mean_absolute_percentage_error(test_features, test_predictions)
+    return accuracy, fpr, tpr, auc, mape
+
+    
+
+def eval_models(dnn_model, xgb_model, df):
+    df = prepare_df(df)
+    train_features, test_features, train_labels, test_labels = split_data(df)
+    test_predictions_tensorflow = dnn_model.predict(test_features.copy()).flatten()
+    test_predictions_xgboost = xgb_model.predict(test_features.copy())
+    
+    accuracy_ten, fpr_ten, tpr_ten, auc_ten, mape_ten = get_metrics(test_features['current_price'], test_labels, test_predictions_tensorflow)
+    accuracy_xgb, fpr_xgb, tpr_xgb, auc_xgb, mape_xgb = get_metrics(test_features['current_price'], test_labels, test_predictions_xgboost)
+
+    res = pd.DataFrame({'model' : ['tensorflow', 'xgb'], 
+                        'accuracy' : [accuracy_ten, accuracy_xgb],
+                        'mape' : [mape_ten, mape_xgb],
+                        'auc' : [auc_ten, auc_xgb],
+                        'fpr' : [fpr_ten, fpr_xgb],
+                        'tpr' : [tpr_ten, tpr_xgb],
+                        }, 
+                        columns=['model', 'accuracy','mape', 'auc', 'fpr', 'tpr'])
+
+    return res
