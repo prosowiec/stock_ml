@@ -184,10 +184,11 @@ def eval_combined_df(dnn_model, xgb_model, df):
     eval['up_dows_real'] = eval.apply(lambda row: pred_up_dows_prod(row, 'real_price'), axis=1)
     eval['symbol'] = eval.index
     
-    auc = metrics.accuracy_score(eval['up_dows_xgb'], eval['up_dows_real'])
+    auc = metrics.roc_auc_score(eval['up_dows_xgb'], eval['up_dows_real'])
+    accuracy = metrics.accuracy_score(eval['up_dows_xgb'], eval['up_dows_real'])
     fpr, tpr, _ = metrics.roc_curve(eval['up_dows_xgb'], eval['up_dows_real'])
 
-    return auc, fpr, tpr
+    return accuracy, auc, fpr, tpr
 
 
 def xgb_baysian(X_train, y_train, X_test, y_test):
@@ -243,22 +244,25 @@ def get_metrics(test_features, test_labels, test_predictions):
     return accuracy, fpr, tpr, auc, mape
 
     
-
 def eval_models(dnn_model, xgb_model, df):
+    df_b = df.copy()
     df = prepare_df(df)
     train_features, test_features, train_labels, test_labels = split_data(df)
+    
     test_predictions_tensorflow = dnn_model.predict(test_features.copy()).flatten()
     test_predictions_xgboost = xgb_model.predict(test_features.copy())
     
     accuracy_ten, fpr_ten, tpr_ten, auc_ten, mape_ten = get_metrics(test_features['current_price'], test_labels, test_predictions_tensorflow)
     accuracy_xgb, fpr_xgb, tpr_xgb, auc_xgb, mape_xgb = get_metrics(test_features['current_price'], test_labels, test_predictions_xgboost)
+    accuraccy_both, auc_both, both_fpr, both_tpr = eval_combined_df(dnn_model, xgb_model, df_b)
 
-    res = pd.DataFrame({'model' : ['tensorflow', 'xgb'], 
-                        'accuracy' : [accuracy_ten, accuracy_xgb],
-                        'mape' : [mape_ten, mape_xgb],
-                        'auc' : [auc_ten, auc_xgb],
-                        'fpr' : [fpr_ten, fpr_xgb],
-                        'tpr' : [tpr_ten, tpr_xgb],
+    
+    res = pd.DataFrame({'model' : ['tensorflow', 'xgb', 'both'], 
+                        'accuracy' : [accuracy_ten, accuracy_xgb, accuraccy_both],
+                        'mape' : [mape_ten, mape_xgb, min(mape_ten, mape_xgb)],
+                        'auc' : [auc_ten, auc_xgb, auc_both],
+                        'fpr' : [fpr_ten, fpr_xgb, both_fpr],
+                        'tpr' : [tpr_ten, tpr_xgb, both_tpr],
                         }, 
                         columns=['model', 'accuracy','mape', 'auc', 'fpr', 'tpr'])
 

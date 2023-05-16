@@ -116,15 +116,19 @@ if option == 'Train ML prediction models':
             
             ten_reg.save('saved_models/dnn_reg')
         
-        auc_both, both_fpr, both_tpr = train_ml.eval_combined_df(ten_reg, xg_reg, df)
-        st.write(f'Accuraccy of model with same movement - {round(auc_both, 2)}')
+        accuraccy_both, auc_both, both_fpr, both_tpr = train_ml.eval_combined_df(ten_reg, xg_reg, df)
+        st.write(f'Accuraccy of model with same movement - {round(accuraccy_both, 2)}')
         chart_data_both = pd.DataFrame(both_tpr, both_fpr)
         st.area_chart(chart_data)
           
-        performace_df = pd.DataFrame({'model': ['Tensorflow', 'XGBOOST', 'BOTH'], 
-                                      'MAPE' : [round(ten_mape, 2), round(xg_mape, 2), min(round(ten_mape, 2), round(xg_mape, 2))], 
-                                      'AUC': [round(ten_auc, 2), round(xg_auc, 2), round(auc_both, 2)]}, 
-                                     columns=['model', 'MAPE', 'AUC']) 
+        performace_df = pd.DataFrame({'model' : ['tensorflow', 'xgb', 'both'], 
+                            'accuracy' : [ten_accuracy, xg_accuracy, accuraccy_both],
+                            'mape' : [ten_mape, xg_mape, min(ten_mape, xg_mape)],
+                            'auc' : [ten_auc, xg_auc, auc_both],
+                            'fpr' : [ten_fpr, xg_fpr, both_fpr],
+                            'tpr' : [ten_tpr, xg_tpr, both_tpr],
+                            }, 
+                            columns=['model', 'accuracy','mape', 'auc', 'fpr', 'tpr'])
         
         performace_df.to_csv('saved_models/performace.csv', index = False, mode='w')
         
@@ -135,30 +139,33 @@ if option == 'Predict prices':
     xgb_reg = xgb.XGBRegressor()
     xgb_reg.load_model("saved_models/xg_reg.json")
     data = db.import_df_0_price()
-    data = data.drop('price_after', axis=1)
-    data = data.drop('_id', axis=1)
-    
-    per_df = pd.read_csv('saved_models/performace.csv')
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write('XGBOOST MODEL')
-        st.write(F'MAPE {per_df.loc[1][1]}')
-        st.write(F'AUC {per_df.loc[1][2]}')
-        pred_xgb = train_ml.xgboost_predict(xgb_reg, data.copy())
-        st.dataframe(pred_xgb)
+    try:
+        data = data.drop('price_after', axis=1)
+        data = data.drop('_id', axis=1)
+        per_df = pd.read_csv('saved_models/performace.csv')
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write('XGBOOST MODEL')
+            st.write(F'MAPE {round(per_df.loc[1][2], 2)}')
+            st.write(F'AUC {round(per_df.loc[1][3], 2)}')
+            pred_xgb = train_ml.xgboost_predict(xgb_reg, data.copy())
+            st.dataframe(pred_xgb)
 
-    with col2:
-        st.write('TENSORFLOW MODEL')
-        st.write(F'MAPE {per_df.loc[0][1]}')
-        st.write(F'AUC {per_df.loc[0][2]}')
-        dnn_df = train_ml.dnn_tensor_predict(dnn_model, data.copy())
-        st.dataframe(dnn_df)
+        with col2:
+            st.write('TENSORFLOW MODEL')
+            st.write(F'MAPE {round(per_df.loc[0][2], 2)}')
+            st.write(F'AUC {round(per_df.loc[0][3], 2)}')
+            dnn_df = train_ml.dnn_tensor_predict(dnn_model, data.copy())
+            st.dataframe(dnn_df)
 
-    st.write('Symbols with same movement')
-    st.write(F'MAPE(best of models) {per_df.loc[2][1]}')
-    st.write(F'AUC {per_df.loc[2][2]}')
-    st.dataframe(train_ml.same_movement(dnn_df, pred_xgb))
+        st.write('Symbols with same movement')
+        st.write(F'MAPE(best of models) {round(per_df.loc[2][1], 2)}')
+        st.write(F'AUC {round(per_df.loc[2][2], 2)}')
+        st.dataframe(train_ml.same_movement(dnn_df, pred_xgb))
+    except:
+        st.warning('There are no prices to be predicted')
+        
     
 if option == 'Evaluate models performance':
     dnn_model = tf.keras.models.load_model(f'saved_models/dnn_reg')
@@ -187,4 +194,5 @@ if option == 'Evaluate models performance':
             st.area_chart(chart_data)
         
         st.write(df)    
-    
+        df.to_csv('saved_models/performace.csv', index = False, mode='w')
+
