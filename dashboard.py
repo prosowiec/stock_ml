@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import xgboost as xgb
 import plotly.express as px
-
 import os
 import scraper
 import database
@@ -12,7 +11,7 @@ import main
 import train_ml
 
 option = st.sidebar.selectbox("Select operation", ('Scrape gainers and lossers', 'Contiue scraping from recent symbol file', 
-                                                   'Scrape ONLY price from prev scrapes', 'Predict prices', 'Train ML prediction models',
+                                                   'Scrape ONLY price from prev scrapes', 'Predict and save moves', 'Train ML prediction models',
                                                    'Evaluate models performance', 'Show / upload data'), 0)
 
 db = database.Stockdata()
@@ -53,7 +52,6 @@ if option == 'Contiue scraping from recent symbol file':
     if st.button('Start scraping'):
         s = scraper.Symbols()
         symbols_filename = 'operations/recent_symbols.csv'
-        #s.save_all_sybmols(symbols_filename)
         main.start_scraping(symbols_filename, min_sleep = 10, max_sleep = 20)   
         db.upload_df()    
 
@@ -133,8 +131,7 @@ if option == 'Train ML prediction models':
         performace_df.to_csv('saved_models/performace.csv', index = False, mode='w')
         
 
-        
-if option == 'Predict prices':
+if option == 'Predict and save moves':
     dnn_model = tf.keras.models.load_model(f'saved_models/dnn_reg')
     xgb_reg = xgb.XGBRegressor()
     xgb_reg.load_model("saved_models/xg_reg.json")
@@ -143,21 +140,25 @@ if option == 'Predict prices':
         data = data.drop('price_after', axis=1)
         data = data.drop('_id', axis=1)
         per_df = pd.read_csv('saved_models/performace.csv')
-        
         col1, col2 = st.columns(2)
         with col1:
             st.write('XGBOOST MODEL')
             st.write(F'MAPE {round(per_df.loc[1][2], 2)}')
             st.write(F'AUC {round(per_df.loc[1][3], 2)}')
             pred_xgb = train_ml.xgboost_predict(xgb_reg, data.copy())
+            pred_xgb = train_ml.make_quantity_df(pred_xgb)
             st.dataframe(pred_xgb)
+            pred_xgb.to_csv('orders/xgb.csv', index = False, mode='w')
 
         with col2:
             st.write('TENSORFLOW MODEL')
             st.write(F'MAPE {round(per_df.loc[0][2], 2)}')
             st.write(F'AUC {round(per_df.loc[0][3], 2)}')
             dnn_df = train_ml.dnn_tensor_predict(dnn_model, data.copy())
+            dnn_df = train_ml.make_quantity_df(dnn_df)
             st.dataframe(dnn_df)
+            dnn_df.to_csv('orders/tensorflow.csv', index = False, mode='w')
+
 
         st.write('Symbols with same movement')
         st.write(F'MAPE(best of models) {round(per_df.loc[2][1], 2)}')
@@ -165,8 +166,8 @@ if option == 'Predict prices':
         st.dataframe(train_ml.same_movement(dnn_df, pred_xgb))
     except:
         st.warning('There are no prices to be predicted')
-        
-    
+
+
 if option == 'Evaluate models performance':
     dnn_model = tf.keras.models.load_model(f'saved_models/dnn_reg')
     xgb_reg = xgb.XGBRegressor()
@@ -192,7 +193,7 @@ if option == 'Evaluate models performance':
             st.write(f'{round(accuracy, 2)} ACCURACY')
             chart_data = pd.DataFrame(tpr, fpr)
             st.area_chart(chart_data)
-        
+
         st.write(df)    
         df.to_csv('saved_models/performace.csv', index = False, mode='w')
 

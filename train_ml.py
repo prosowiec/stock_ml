@@ -134,26 +134,49 @@ def train_reg_xgboost(df = '', tune = True):
     mape = metrics.mean_absolute_percentage_error(test_features['current_price'], test_predictions)
     return accuracy, fpr, tpr, auc, reg, mape
 
+def make_quantity_df(df):
+    df['pos_procendage'] = (df['scraped_price'] * 100) / df['scraped_price'].sum()
+    df['quantity'] = 1 / df['pos_procendage']
+    df['quantity'] = df['quantity'].round(0)
+
+    def new_column(row):
+        if row['quantity'] == 0:
+            return 1
+        else:
+            return row['quantity']
+
+    df['quantity'] = df.apply(new_column, axis=1)
+    
+    return df
 
 def dnn_tensor_predict(model, cur_features):
+    cur_features.loc[:, 'current_price':] = cur_features.loc[:, 'current_price':].apply(lambda x: pd.to_numeric(x, errors='coerce')).dropna() 
     symbols = cur_features.pop('symbol')
-    cur_features = cur_features.apply(lambda x: pd.to_numeric(x, errors='coerce')).dropna()    
     
     pred_dnn = model.predict(cur_features).flatten()
     df = pd.DataFrame({'symbol': symbols, 'scraped_price' : cur_features['current_price'],'predicted_price_dnn': pred_dnn}, 
                       columns=['symbol', 'scraped_price', 'predicted_price_dnn'])
+    df['order_type'] = df.apply(lambda row: pred_ORDER_prod(row, 'predicted_price_dnn'), axis=1)
+    df = make_quantity_df(df)
     return df
 
 
 def xgboost_predict(model, cur_features):
+    cur_features.loc[:, 'current_price':] = cur_features.loc[:, 'current_price':].apply(lambda x: pd.to_numeric(x, errors='coerce')).dropna() 
     symbols = cur_features.pop('symbol')
-    cur_features = cur_features.apply(lambda x: pd.to_numeric(x, errors='coerce')).dropna() 
-       
+
     pred_xgb = model.predict(cur_features)
+
     df = pd.DataFrame({'symbol': symbols, 'scraped_price' : cur_features['current_price'], 'predicted_price_xgb': pred_xgb}, 
                       columns=['symbol', 'scraped_price', 'predicted_price_xgb'])
+    df['order_type'] = df.apply(lambda row: pred_ORDER_prod(row, 'predicted_price_xgb'), axis=1)
     return df
 
+def pred_ORDER_prod(row, pred_name):
+    if row['scraped_price'] >= row[pred_name]:
+        return 'SELL'
+    else:
+        return 'BUY'
 
 def pred_up_dows_prod(row, pred_name):
     if row['scraped_price'] >= row[pred_name]:
@@ -234,6 +257,10 @@ def xgb_baysian(X_train, y_train, X_test, y_test):
 
 def get_metrics(test_features, test_labels, test_predictions):
     dataset = classify_pred(test_features, test_labels, test_predictions.copy())
+
+    dataset['pred_change'] = (dataset['pred'] - dataset['before']) * 100 / dataset['before']
+    #dataset = dataset.loc[(abs(dataset['pred_change']) > 0.1) &  (abs(dataset['pred_change']) < 5)]
+    
     accuracy  = round(dataset['check_pred'].sum() / dataset.shape[0] * 100, 2)
     pred = list(dataset['pred_up_dows'])
     test = list(dataset['real_up_dows'])
@@ -251,12 +278,10 @@ def eval_models(dnn_model, xgb_model, df):
     
     test_predictions_tensorflow = dnn_model.predict(test_features.copy()).flatten()
     test_predictions_xgboost = xgb_model.predict(test_features.copy())
-    
     accuracy_ten, fpr_ten, tpr_ten, auc_ten, mape_ten = get_metrics(test_features['current_price'], test_labels, test_predictions_tensorflow)
     accuracy_xgb, fpr_xgb, tpr_xgb, auc_xgb, mape_xgb = get_metrics(test_features['current_price'], test_labels, test_predictions_xgboost)
     accuraccy_both, auc_both, both_fpr, both_tpr = eval_combined_df(dnn_model, xgb_model, df_b)
 
-    
     res = pd.DataFrame({'model' : ['tensorflow', 'xgb', 'both'], 
                         'accuracy' : [accuracy_ten, accuracy_xgb, accuraccy_both],
                         'mape' : [mape_ten, mape_xgb, min(mape_ten, mape_xgb)],
