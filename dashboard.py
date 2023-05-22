@@ -9,10 +9,12 @@ import scraper
 import database
 import main
 import train_ml
+import algo_trade
 
 option = st.sidebar.selectbox("Select operation", ('Scrape gainers and lossers', 'Contiue scraping from recent symbol file', 
                                                    'Scrape ONLY price from prev scrapes', 'Predict and save moves', 'Train ML prediction models',
-                                                   'Evaluate models performance', 'Show / upload data'), 0)
+                                                   'Evaluate models performance', 'Place orders', 'Show / upload data'), 0)
+st.sidebar.write('Created by Łukasz Janikowski')
 
 db = database.Stockdata()
 st.header(option)
@@ -197,3 +199,12 @@ if option == 'Evaluate models performance':
         st.write(df)    
         df.to_csv('saved_models/performace.csv', index = False, mode='w')
 
+
+if option == 'Place orders':
+    if st.button('Orders from tensorflow'):
+        df = pd.read_csv('orders/tensorflow.csv')
+        algo_trade.make_trades(df, 'predicted_price_dnn')
+        
+    if st.button('Orders from xgboost'):
+        df = pd.read_csv('orders/xgb.csv')
+        algo_trade.make_trades(df, 'predicted_price_xgb')

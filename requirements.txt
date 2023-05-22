@@ -10,3 +10,5 @@ xgboost
 sklearn
 tensorflow
 hyperopt
+ibapi
+plotly
