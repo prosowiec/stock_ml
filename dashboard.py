@@ -138,30 +138,34 @@ if option == 'Predict and save moves':
     xgb_reg = xgb.XGBRegressor()
     xgb_reg.load_model("saved_models/xg_reg.json")
     data = db.import_df_0_price()
+
+    data = data.drop('price_after', axis=1)
+    data = data.drop('_id', axis=1)
+    per_df = pd.read_csv('saved_models/performace.csv')
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write(f'Minimum chosen procent {per_df.loc[0][6]}')
+        st.header('XGBOOST MODEL')
+        st.write(F'MAPE {round(per_df.loc[1][2], 2)}')
+        st.write(F'AUC {round(per_df.loc[1][3], 2)}')
+        pred_xgb = train_ml.xgboost_predict(xgb_reg, data.copy())
+        pred_xgb = train_ml.make_quantity_df(pred_xgb)
+        pred_xgb = train_ml.cut_change_range(pred_xgb, 'predicted_price_xgb', per_df.loc[0][6], per_df.loc[1][6])
+        st.dataframe(pred_xgb)
+        pred_xgb.to_csv('orders/xgb.csv', index = False, mode='w')
+
+    with col2:
+        st.write(f'Maximum chosen procent {per_df.loc[1][6]}')
+        st.header('TENSORFLOW MODEL')
+        st.write(F'MAPE {round(per_df.loc[0][2], 2)}')
+        st.write(F'AUC {round(per_df.loc[0][3], 2)}')
+        dnn_df = train_ml.dnn_tensor_predict(dnn_model, data.copy())
+        dnn_df = train_ml.make_quantity_df(dnn_df)
+        dnn_df = train_ml.cut_change_range(dnn_df, 'predicted_price_dnn', per_df.loc[0][6], per_df.loc[1][6])
+        st.dataframe(dnn_df)
+        dnn_df.to_csv('orders/tensorflow.csv', index = False, mode='w')
+
     try:
-        data = data.drop('price_after', axis=1)
-        data = data.drop('_id', axis=1)
-        per_df = pd.read_csv('saved_models/performace.csv')
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write('XGBOOST MODEL')
-            st.write(F'MAPE {round(per_df.loc[1][2], 2)}')
-            st.write(F'AUC {round(per_df.loc[1][3], 2)}')
-            pred_xgb = train_ml.xgboost_predict(xgb_reg, data.copy())
-            pred_xgb = train_ml.make_quantity_df(pred_xgb)
-            st.dataframe(pred_xgb)
-            pred_xgb.to_csv('orders/xgb.csv', index = False, mode='w')
-
-        with col2:
-            st.write('TENSORFLOW MODEL')
-            st.write(F'MAPE {round(per_df.loc[0][2], 2)}')
-            st.write(F'AUC {round(per_df.loc[0][3], 2)}')
-            dnn_df = train_ml.dnn_tensor_predict(dnn_model, data.copy())
-            dnn_df = train_ml.make_quantity_df(dnn_df)
-            st.dataframe(dnn_df)
-            dnn_df.to_csv('orders/tensorflow.csv', index = False, mode='w')
-
-
         st.write('Symbols with same movement')
         st.write(F'MAPE(best of models) {round(per_df.loc[2][1], 2)}')
         st.write(F'AUC {round(per_df.loc[2][2], 2)}')
@@ -175,8 +179,15 @@ if option == 'Evaluate models performance':
     xgb_reg = xgb.XGBRegressor()
     xgb_reg.load_model("saved_models/xg_reg.json")
     data = db.import_df_whole()
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        min_proc = st.number_input('Minimum allowed % change', min_value = -0.1, value = 0.30, step = 0.01)
+    with c2:
+        max_proc = st.number_input('Maximum allowed % change', min_value = min_proc, value = 5.0, step = 0.01)
+    
     if st.button('Start evaluation'):
-        df = train_ml.eval_models(dnn_model, xgb_reg, data)
+        df = train_ml.eval_models(dnn_model, xgb_reg, data,  min_proc, max_proc)
         col1, col2 = st.columns(2)
         with col1:
             accuracy, fpr, tpr, auc, mape = df.loc[1, 'accuracy'], df.loc[1, 'fpr'], df.loc[1, 'tpr'], df.loc[1, 'auc'], df.loc[1, 'mape']

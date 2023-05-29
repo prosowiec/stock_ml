@@ -149,6 +149,11 @@ def make_quantity_df(df):
     
     return df
 
+def cut_change_range(dataset, pred_name, min_proc = 0, max_proc = 100):
+    dataset['pred_change'] = (dataset[pred_name] - dataset['scraped_price']) * 100 / dataset['scraped_price']
+    dataset = dataset.loc[(abs(dataset['pred_change']) > min_proc) &  (abs(dataset['pred_change']) < max_proc)]
+    return dataset
+
 def dnn_tensor_predict(model, cur_features):
     cur_features.loc[:, 'current_price':] = cur_features.loc[:, 'current_price':].apply(lambda x: pd.to_numeric(x, errors='coerce')).dropna() 
     symbols = cur_features.pop('symbol')
@@ -170,6 +175,7 @@ def xgboost_predict(model, cur_features):
     df = pd.DataFrame({'symbol': symbols, 'scraped_price' : cur_features['current_price'], 'predicted_price_xgb': pred_xgb}, 
                       columns=['symbol', 'scraped_price', 'predicted_price_xgb'])
     df['order_type'] = df.apply(lambda row: pred_ORDER_prod(row, 'predicted_price_xgb'), axis=1)
+    
     return df
 
 def pred_ORDER_prod(row, pred_name):
@@ -255,11 +261,11 @@ def xgb_baysian(X_train, y_train, X_test, y_test):
     return best_hyperparams
 
 
-def get_metrics(test_features, test_labels, test_predictions):
+def get_metrics(test_features, test_labels, test_predictions, min_proc = 0, max_proc = 100):
     dataset = classify_pred(test_features, test_labels, test_predictions.copy())
 
     dataset['pred_change'] = (dataset['pred'] - dataset['before']) * 100 / dataset['before']
-    #dataset = dataset.loc[(abs(dataset['pred_change']) > 0.1) &  (abs(dataset['pred_change']) < 5)]
+    dataset = dataset.loc[(abs(dataset['pred_change']) > min_proc) &  (abs(dataset['pred_change']) < max_proc)]
     
     accuracy  = round(dataset['check_pred'].sum() / dataset.shape[0] * 100, 2)
     pred = list(dataset['pred_up_dows'])
@@ -271,15 +277,15 @@ def get_metrics(test_features, test_labels, test_predictions):
     return accuracy, fpr, tpr, auc, mape
 
     
-def eval_models(dnn_model, xgb_model, df):
+def eval_models(dnn_model, xgb_model, df, min_proc, max_proc):
     df_b = df.copy()
     df = prepare_df(df)
     train_features, test_features, train_labels, test_labels = split_data(df)
     
     test_predictions_tensorflow = dnn_model.predict(test_features.copy()).flatten()
     test_predictions_xgboost = xgb_model.predict(test_features.copy())
-    accuracy_ten, fpr_ten, tpr_ten, auc_ten, mape_ten = get_metrics(test_features['current_price'], test_labels, test_predictions_tensorflow)
-    accuracy_xgb, fpr_xgb, tpr_xgb, auc_xgb, mape_xgb = get_metrics(test_features['current_price'], test_labels, test_predictions_xgboost)
+    accuracy_ten, fpr_ten, tpr_ten, auc_ten, mape_ten = get_metrics(test_features['current_price'], test_labels, test_predictions_tensorflow, min_proc, max_proc)
+    accuracy_xgb, fpr_xgb, tpr_xgb, auc_xgb, mape_xgb = get_metrics(test_features['current_price'], test_labels, test_predictions_xgboost, min_proc, max_proc)
     accuraccy_both, auc_both, both_fpr, both_tpr = eval_combined_df(dnn_model, xgb_model, df_b)
 
     res = pd.DataFrame({'model' : ['tensorflow', 'xgb', 'both'], 
@@ -288,7 +294,8 @@ def eval_models(dnn_model, xgb_model, df):
                         'auc' : [auc_ten, auc_xgb, auc_both],
                         'fpr' : [fpr_ten, fpr_xgb, both_fpr],
                         'tpr' : [tpr_ten, tpr_xgb, both_tpr],
+                        'min_max' : [min_proc, max_proc, 0]
                         }, 
-                        columns=['model', 'accuracy','mape', 'auc', 'fpr', 'tpr'])
+                        columns=['model', 'accuracy','mape', 'auc', 'fpr', 'tpr', 'min_max'])
 
     return res
