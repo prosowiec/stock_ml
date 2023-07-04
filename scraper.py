@@ -272,11 +272,15 @@ class Features:
         df.to_csv(filename, index = False, mode='a', header=False)
         
 
-    def get_df_price_after(self, df):
+    def get_df_price_after(self, df, daysoff = 0):
         now = datetime.utcnow()
         dateto = int(now.timestamp())
         dt = timedelta(days=366)
         datefrom = int((now - dt).timestamp())
+        
+        if daysoff != 0:
+            dt = timedelta(days = daysoff)
+            dateto = int((now - dt).timestamp())
         
         res_df = pd.DataFrame()
         for i in stqdm(df.index):

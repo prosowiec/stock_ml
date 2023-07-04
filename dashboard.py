@@ -13,7 +13,8 @@ import algo_trade
 
 option = st.sidebar.selectbox("Select operation", ('Scrape gainers and lossers', 'Contiue scraping from recent symbol file', 
                                                    'Scrape ONLY price from prev scrapes', 'Predict and save moves', 'Train ML prediction models',
-                                                   'Evaluate models performance', 'Place orders', 'Show / upload data'), 0)
+                                                   'Evaluate models performance', 'Place orders IB', 'Place orders XTB',
+                                                   'Show / upload data'), 0)
 st.sidebar.write('Created by Łukasz Janikowski')
 
 db = database.Stockdata()
@@ -42,11 +43,13 @@ if option == 'Scrape gainers and lossers':
             
 if option == 'Scrape ONLY price from prev scrapes':
     st.write('Click button to continue')
+    daysoff = 0
+    st.text_input(label = "Number of skiped days", value = daysoff, )
     if st.button('Start scraping'): 
         with st.spinner('Please wait ~~ aprox. 15 min'):
             c1 = scraper.Features()
             data = db.import_df_0_price()
-            df = c1.get_df_price_after(data)
+            df = c1.get_df_price_after(data, daysoff)
             db.upload_current_price(df)    
     
 if option == 'Contiue scraping from recent symbol file':
@@ -211,11 +214,20 @@ if option == 'Evaluate models performance':
         df.to_csv('saved_models/performace.csv', index = False, mode='w')
 
 
-if option == 'Place orders':
+if option == 'Place orders IB':
     if st.button('Orders from tensorflow'):
         df = pd.read_csv('orders/tensorflow.csv')
-        algo_trade.make_trades(df, 'predicted_price_dnn')
+        algo_trade.make_trades_IB(df, 'predicted_price_dnn')
         
     if st.button('Orders from xgboost'):
         df = pd.read_csv('orders/xgb.csv')
-        algo_trade.make_trades(df, 'predicted_price_xgb')
+        algo_trade.make_trades_IB(df, 'predicted_price_xgb')
+        
+if option == 'Place orders XTB':
+    if st.button('Orders from tensorflow'):
+        df = pd.read_csv('orders/tensorflow.csv')
+        algo_trade.make_trades_XTB(df, 'predicted_price_dnn')
+        
+    if st.button('Orders from xgboost'):
+        df = pd.read_csv('orders/xgb.csv')
+        algo_trade.make_trades_XTB(df, 'predicted_price_xgb')
